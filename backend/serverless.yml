@@ -12,6 +12,10 @@ provider:
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'us-east-1'}
 
+  tracing:
+    lambda: true
+    apiGateway: true
+
   environment:
     TODOS_TABLE: Todos-${self:provider.stage}
     AUTH_0_SECRET_ID: Auth0Secret-${self:provider.stage}
@@ -19,35 +23,20 @@ provider:
     INDEX_NAME: Todos-UserID-${self:provider.stage}
     IMAGES_S3_BUCKET: todos-pjoshi-images-${self:provider.stage}
     SIGNED_URL_EXPIRATION: 3000
-  iamRoleStatements:
-    - Effect: Allow
-      Action:
-        - secretsmanager:GetSecretValue
-      Resource: !Ref Auth0Secret
-    - Effect: Allow
-      Action:
-        - kms:Decrypt
-      Resource: !GetAtt KMSKey.Arn  
-    - Effect: Allow
-      Action:
-        - dynamodb:Scan
-        - dynamodb:PutItem
-        - dynamodb:GetItem
-        - dynamodb:Query
-        - dynamodb:DeleteItem
-        - dynamodb:UpdateItem
-      Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
-    - Effect: Allow
-      Action:
-        - s3:PutObject
-        - s3:GetObject
-      Resource: arn:aws:s3:::${self:provider.environment.IMAGES_S3_BUCKET}/*
 
 functions:
 
   Auth:
     handler: src/lambda/auth/auth0Authorizer.handler
-
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - secretsmanager:GetSecretValue
+        Resource: !Ref Auth0Secret
+      - Effect: Allow
+        Action:
+          - kms:Decrypt
+        Resource: !GetAtt KMSKey.Arn 
   # TODO: Configure this function
   GetTodos:
     handler: src/lambda/http/getTodos.handler
@@ -57,6 +46,12 @@ functions:
           path: todos
           cors: true
           authorizer: Auth
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
+
   # TODO: Configure this function
   CreateTodo:
     handler: src/lambda/http/createTodo.handler
@@ -66,6 +61,15 @@ functions:
           path: todos
           cors: true
           authorizer: Auth
+          request:
+            # Schema that will be used to validate incoming requests
+            schema:
+              application/json: ${file(src/models/create-todo-request.json)}
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:PutItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
   # TODO: Configure this function
   UpdateTodo:
     handler: src/lambda/http/updateTodo.handler
@@ -75,7 +79,15 @@ functions:
           path: todos/{todoId}
           cors: true
           authorizer: Auth
-
+          request:
+            # Schema that will be used to validate incoming requests
+            schema:
+              application/json: ${file(src/models/update-todo-request.json)}
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:UpdateItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
   # TODO: Configure this function
   DeleteTodo:
     handler: src/lambda/http/deleteTodo.handler
@@ -85,6 +97,12 @@ functions:
           path: todos/{todoId}
           cors: true
           authorizer: Auth
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:DeleteItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
+        
   # TODO: Configure this function
   GenerateUploadUrl:
     handler: src/lambda/http/generateUploadUrl.handler
@@ -94,6 +112,16 @@ functions:
           path: todos/{todoId}/attachment
           cors: true
           authorizer: Auth
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - s3:PutObject
+          - s3:GetObject
+        Resource: arn:aws:s3:::${self:provider.environment.IMAGES_S3_BUCKET}/*
+      - Effect: Allow
+        Action:
+          - dynamodb:UpdateItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
 
 resources:
   Resources:
